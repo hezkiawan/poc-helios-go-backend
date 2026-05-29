@@ -1,0 +1,56 @@
+name: GitOps Release Handoff
+
+on:
+  push:
+    tags:
+      - 'v*' # This pipeline only wakes up when a tag (like v1.0.0) is published
+
+jobs:
+  gitops-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 🏷️ Extract Tag Name
+        run: echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+
+      - name: 🐳 Simulate Docker Build & Push
+        run: |
+          echo "Building image for tag ${{ env.TAG_NAME }}..."
+          sleep 2
+          echo "Success: Image pushed to registry!"
+
+      - name: 📥 Checkout Infrastructure Repository
+        uses: actions/checkout@v4
+        with:
+          repository: hezkiawan/poc-helios-infra # CHANGE YOUR_USERNAME HERE
+          token: ${{ secrets.INFRA_PAT }}
+          path: infra-repo
+
+      - name: ✍️ Update Deployment Manifest
+        run: |
+          cd infra-repo
+          # This command finds the old image tag and replaces it with the new tag
+          sed -i "s|image: ghcr.io/.*/poc-helios-backend:.*|image: ghcr.io/${{ github.actor }}/poc-helios-backend:${{ env.TAG_NAME }}|g" deployment.yaml
+
+      - name: 🚀 Create Pull Request in Infra Repo
+        env:
+          GH_TOKEN: ${{ secrets.INFRA_PAT }}
+        run: |
+          cd infra-repo
+          git config user.name "GitOps Bot"
+          git config user.email "bot@helios.poc"
+
+          # Create a new branch for the PR
+          BRANCH_NAME="release/${{ env.TAG_NAME }}"
+          git checkout -b $BRANCH_NAME
+
+          # Commit the changes
+          git add deployment.yaml
+          git commit -m "chore(deploy): update backend image to ${{ env.TAG_NAME }}"
+          git push origin $BRANCH_NAME
+
+          # Open the Pull Request for the Production Team
+          gh pr create \
+            --title "🚀 Deploy Backend ${{ env.TAG_NAME }} to Production" \
+            --body "Automated PR from RnD. Please review and merge to deploy." \
+            --base main \
+            --head $BRANCH_NAME
