@@ -3,7 +3,7 @@ name: GitOps Release Handoff
 on:
   push:
     tags:
-      - 'v*' # This pipeline only wakes up when a tag (like v1.0.0) is published
+      - 'v*' # This pipeline only wakes up when a tag (like v1.0.1) is published
 
 jobs:
   gitops-deploy:
@@ -21,7 +21,7 @@ jobs:
       - name: 📥 Checkout Infrastructure Repository
         uses: actions/checkout@v4
         with:
-          repository: hezkiawan/poc-helios-infra # CHANGE YOUR_USERNAME HERE
+          repository: YOUR_USERNAME/poc-helios-infra # CHANGE THIS to your username
           token: ${{ secrets.INFRA_PAT }}
           path: infra-repo
 
@@ -39,18 +39,23 @@ jobs:
           git config user.name "GitOps Bot"
           git config user.email "bot@helios.poc"
 
-          # Create a new branch for the PR
+          # Create a new branch
           BRANCH_NAME="release/${{ env.TAG_NAME }}"
           git checkout -b $BRANCH_NAME
 
-          # Commit the changes
-          git add deployment.yaml
-          git commit -m "chore(deploy): update backend image to ${{ env.TAG_NAME }}"
-          git push origin $BRANCH_NAME
+          # Check if the sed command actually changed the file
+          if [[ -n $(git status -s) ]]; then
+            # Changes found: Commit and open PR
+            git add deployment.yaml
+            git commit -m "chore(deploy): update backend image to ${{ env.TAG_NAME }}"
+            git push origin $BRANCH_NAME
 
-          # Open the Pull Request for the Production Team
-          gh pr create \
-            --title "🚀 Deploy Backend ${{ env.TAG_NAME }} to Production" \
-            --body "Automated PR from RnD. Please review and merge to deploy." \
-            --base main \
-            --head $BRANCH_NAME
+            gh pr create \
+              --title "🚀 Deploy Backend ${{ env.TAG_NAME }} to Production" \
+              --body "Automated PR from RnD. Please review and merge to deploy." \
+              --base main \
+              --head $BRANCH_NAME
+          else
+            # No changes found: Gracefully exit
+            echo "No changes detected. The infrastructure is already running this version."
+          fi

@@ -38,3 +38,4 @@ Clean up binary from the last build:
 make clean
 ```
 Added User Login Feature
+Fixed Critical Login Crash
