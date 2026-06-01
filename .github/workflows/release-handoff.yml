@@ -21,7 +21,7 @@ jobs:
       - name: 📥 Checkout Infrastructure Repository
         uses: actions/checkout@v4
         with:
-          repository: YOUR_USERNAME/poc-helios-infra # CHANGE THIS to your username
+          repository: hezkiawan/poc-helios-infra 
           token: ${{ secrets.INFRA_PAT }}
           path: infra-repo
 
