@@ -8,7 +8,6 @@ on:
 jobs:
   gitops-deploy:
     runs-on: ubuntu-latest
-    # We must explicitly grant permission to push packages to GHCR
     permissions:
       contents: read
       packages: write 
@@ -33,16 +32,27 @@ jobs:
           push: true
           tags: ghcr.io/${{ github.actor }}/poc-helios-backend:${{ env.TAG_NAME }}
 
+      # --- THE NEW SMART ROUTING LOGIC ---
+      - name: 🔀 Determine Environment (Staging vs Prod)
+        run: |
+          if [[ "${{ env.TAG_NAME }}" == *"-rc"* ]]; then
+            echo "ENV_NAME=Staging" >> $GITHUB_ENV
+            echo "FOLDER_PATH=staging" >> $GITHUB_ENV
+          else
+            echo "ENV_NAME=Production" >> $GITHUB_ENV
+            echo "FOLDER_PATH=production" >> $GITHUB_ENV
+          fi
+
       - name: 📥 Checkout Infrastructure Repository
         uses: actions/checkout@v4
         with:
-          repository: hezkiawan/poc-helios-infra 
+          repository: hezkiawan/poc-helios-infra
           token: ${{ secrets.INFRA_PAT }}
           path: infra-repo
 
       - name: ✍️ Update Deployment Manifest
         run: |
-          cd infra-repo
+          cd infra-repo/${{ env.FOLDER_PATH }}
           sed -i "s|image: ghcr.io/.*/poc-helios-backend:.*|image: ghcr.io/${{ github.actor }}/poc-helios-backend:${{ env.TAG_NAME }}|g" deployment.yaml
 
       - name: 🚀 Create Pull Request in Infra Repo
@@ -53,17 +63,19 @@ jobs:
           git config user.name "GitOps Bot"
           git config user.email "bot@helios.poc"
 
-          BRANCH_NAME="release/${{ env.TAG_NAME }}"
+          # Create a unique branch name based on the environment
+          BRANCH_NAME="release/${{ env.FOLDER_PATH }}-${{ env.TAG_NAME }}"
           git checkout -b $BRANCH_NAME
 
           if [[ -n $(git status -s) ]]; then
-            git add deployment.yaml
-            git commit -m "chore(deploy): update backend image to ${{ env.TAG_NAME }}"
+            git add ${{ env.FOLDER_PATH }}/deployment.yaml
+            git commit -m "chore(deploy): update ${{ env.ENV_NAME }} image to ${{ env.TAG_NAME }}"
             git push origin $BRANCH_NAME
 
+            # The PR title and body dynamically adapt to the target environment
             gh pr create \
-              --title "🚀 Deploy Backend ${{ env.TAG_NAME }} to Production" \
-              --body "Automated PR from RnD. Image successfully built and pushed to GHCR. Please review and merge." \
+              --title "🚀 Deploy Backend ${{ env.TAG_NAME }} to ${{ env.ENV_NAME }}" \
+              --body "Automated PR from RnD. Image successfully built and pushed to GHCR. Please review and merge to update the **${{ env.ENV_NAME }}** environment." \
               --base main \
               --head $BRANCH_NAME
           else
